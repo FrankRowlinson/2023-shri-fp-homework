@@ -14,38 +14,98 @@
  * Иногда промисы от API будут приходить в состояние rejected, (прямо как и API в реальной жизни)
  * Ответ будет приходить в поле {result}
  */
- import Api from '../tools/api';
+import * as R from "ramda";
+import _ from "lodash";
 
- const api = new Api();
+import Api from "../tools/api";
 
- /**
-  * Я – пример, удали меня
-  */
- const wait = time => new Promise(resolve => {
-     setTimeout(resolve, time);
- })
+const {
+  __,
+  gt,
+  lt,
+  length,
+  compose,
+  test,
+  prop,
+  both,
+  allPass,
+  ifElse,
+  concat,
+  otherwise,
+  mathMod,
+  andThen,
+  tap,
+  partial,
+  pipe,
+  assoc,
+} = R;
+const { toNumber, toString, round } = _;
 
- const processSequence = ({value, writeLog, handleSuccess, handleError}) => {
-     /**
-      * Я – пример, удали меня
-      */
-     writeLog(value);
+// init
+const api = new Api();
 
-     api.get('https://api.tech/numbers/base', {from: 2, to: 10, number: '01011010101'}).then(({result}) => {
-         writeLog(result);
-     });
+// constants
+const numberRegexp = /^\d+(\.\d+)?$/;
+const URLS = {
+  BASE_NUMBERS: "https://api.tech/numbers/base",
+  BASE_ANIMALS: "https://animals.tech/",
+};
+const ERRORS = {
+  VALIDATION_ERROR: "ValidationError",
+};
+const PROPS = {
+  RESULT: "result",
+  NUMBER: "number",
+};
 
-     wait(2500).then(() => {
-         writeLog('SecondLog')
+// validation
+const isLessThan10 = lt(__, 10);
+const isMoreThan2 = gt(__, 2);
+const isInBoundaries = both(isLessThan10, isMoreThan2);
+const isLengthValid = compose(isInBoundaries, length);
+const isNumber = test(numberRegexp);
+const isInputValid = allPass([isLengthValid, isNumber]);
 
-         return wait(1500);
-     }).then(() => {
-         writeLog('ThirdLog');
+// mutation
+const addNumberToProps = assoc(PROPS.NUMBER, __, { from: 10, to: 2 });
+const getResult = pipe(prop(PROPS.RESULT), toString);
+const square = (value) => value ** 2;
+const mod3 = mathMod(__, 3);
+const formUrlToGetAnimal = concat(URLS.BASE_ANIMALS);
 
-         return wait(400);
-     }).then(() => {
-         handleSuccess('Done');
-     });
- }
+// api
+const convertToBinaryBase = pipe(addNumberToProps, api.get(URLS.BASE_NUMBERS));
+const getAnimal = api.get(__, {});
+
+const processSequence = ({ value, writeLog, handleSuccess, handleError }) => {
+  const handleValidationError = partial(handleError, [ERRORS.VALIDATION_ERROR]);
+  const tapWriteLog = tap(writeLog);
+  const runSequence = pipe(
+    toNumber,
+    round,
+    tapWriteLog,
+    convertToBinaryBase,
+    andThen(getResult),
+    andThen(tapWriteLog),
+    andThen(length),
+    andThen(tapWriteLog),
+    andThen(square),
+    andThen(tapWriteLog),
+    andThen(mod3),
+    andThen(tapWriteLog),
+    andThen(toString),
+    andThen(formUrlToGetAnimal),
+    andThen(getAnimal),
+    andThen(getResult),
+    andThen(handleSuccess),
+    otherwise(handleError)
+  );
+
+  const runIfValid = ifElse(isInputValid, runSequence, handleValidationError);
+
+  const app = compose(runIfValid, tapWriteLog);
+
+  app(value);
+};
 
 export default processSequence;
